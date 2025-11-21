@@ -1,0 +1,12 @@
+Đây là một tài liệu PDF test (mô phỏng)
+Nội dung tài liệu về dự án AI Life Companion
+
+Mục tiêu: Xây dựng một hệ thống nhật ký thông minh với AI
+Tính năng chính:
+- GraphRAG để lưu trữ và truy xuất thông tin
+- Proactive agent để nhắc nhở
+- Multimodal support cho ảnh, video, PDF
+- Dashboard phân tích cuộc sống
+
+Ngày tạo: 21/11/2025
+

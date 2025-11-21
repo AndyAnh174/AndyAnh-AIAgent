@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AI Life Companion Icon">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="50%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#050816"/>
+  <circle cx="256" cy="256" r="200" fill="none" stroke="url(#gradient)" stroke-width="32" filter="url(#glow)"/>
+  <path d="M176 208C176 167 208 136 249 136C290 136 322 167 322 208V352H176V208Z" fill="url(#gradient)"/>
+  <path d="M224 208C224 190 239 176 257 176C275 176 290 190 290 208V352H224V208Z" fill="#050816"/>
+</svg>
+
