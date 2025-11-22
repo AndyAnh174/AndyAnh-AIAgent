@@ -6,16 +6,16 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/ai_life_db
+      DATABASE_URL: postgresql+asyncpg://ai_life_prod:0c41ebadaa39596b08ce59809fd96d5a@postgres:5432/ai_life_db
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ACCESS_KEY: minio-prod-4857026417ca5c0a606005b5e4c9812b693bc81c
+      MINIO_SECRET_KEY: 4857026417ca5c0a606005b5e4c9812b693bc81c
       MINIO_BUCKET: ai-life-companion
       QDRANT_URL: http://qdrant:6333
       OLLAMA_BASE_URL: http://222.253.80.30:11434
-      API_KEYS: local-dev-key-1,local-dev-key-2
-      SESSION_SECRET: super-secret-change-me-in-production
+      API_KEYS: prod-key-9143e409662258c9fc2a6553,prod-key-ce6d2def566cf2e3b41dfc08
+      SESSION_SECRET: 39d4483eef8912234b5bc58d600ddd4de1598b48a6a1df15378e22128d3e47a3
     volumes:
       - ./app:/app/app
       - ./alembic:/app/alembic
@@ -42,11 +42,11 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/ai_life_db
+      DATABASE_URL: postgresql+asyncpg://ai_life_prod:0c41ebadaa39596b08ce59809fd96d5a@postgres:5432/ai_life_db
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ACCESS_KEY: minio-prod-4857026417ca5c0a606005b5e4c9812b693bc81c
+      MINIO_SECRET_KEY: 4857026417ca5c0a606005b5e4c9812b693bc81c
       QDRANT_URL: http://qdrant:6333
     volumes:
       - ./app:/app/app
@@ -60,11 +60,11 @@ services:
     image: postgres:16-alpine
     container_name: ai_life_companion_db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ai_life_prod
+      POSTGRES_PASSWORD: 0c41ebadaa39596b08ce59809fd96d5a
       POSTGRES_DB: ai_life_db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d ai_life_db"]
+      test: ["CMD-SHELL", "pg_isready -U ai_life_prod -d ai_life_db"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -86,8 +86,8 @@ services:
     container_name: ai_life_companion_minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: minio-prod-4857026417ca5c0a606005b5e4c9812b693bc81c
+      MINIO_ROOT_PASSWORD: 4857026417ca5c0a606005b5e4c9812b693bc81c
     ports:
       - "9000:9000"
       - "9001:9001"

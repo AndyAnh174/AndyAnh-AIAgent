@@ -15,7 +15,7 @@ export function DashboardSection() {
       try {
         await apiClient.healthCheck();
         setIsConnected(true);
-      } catch (error) {
+      } catch {
         setIsConnected(false);
       } finally {
         setIsChecking(false);

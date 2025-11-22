@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { apiClient, type JournalEntrySummary, type JournalEntryDetail } from "@/lib/api";
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw, Trash2, Edit3, ImageIcon } from "lucide-react";
+import { Loader2, RefreshCw, Trash2, Edit3, ImageIcon, ArrowUp, ArrowDown } from "lucide-react";
 
 export function DataManagerSection() {
   const [entries, setEntries] = useState<JournalEntrySummary[]>([]);
@@ -11,24 +11,45 @@ export function DataManagerSection() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const loadEntries = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await apiClient.listJournalEntries({ limit: 100 });
-      setEntries(data);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Không thể tải danh sách nhật ký";
-      setError(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [sortBy, setSortBy] = useState<"title" | "created_at">("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
 
   useEffect(() => {
+    const loadEntries = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // No limit - get all entries
+        const data = await apiClient.listJournalEntries({ 
+          sort_by: sortBy,
+          sort_order: sortOrder,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        });
+        setEntries(data);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Không thể tải danh sách nhật ký";
+        setError(msg);
+      } finally {
+        setIsLoading(false);
+      }
+    };
     void loadEntries();
-  }, []);
+  }, [sortBy, sortOrder, dateFrom, dateTo]);
+
+  // Filter entries by search query
+  const filteredEntries = entries.filter((entry) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      entry.title.toLowerCase().includes(query) ||
+      entry.tags.some((tag) => tag.toLowerCase().includes(query)) ||
+      entry.mood?.toLowerCase().includes(query)
+    );
+  });
 
   const handleSelectEntry = async (entryId: number) => {
     setError(null);
@@ -91,24 +112,125 @@ export function DataManagerSection() {
 
   return (
     <section className="flex flex-col h-[calc(100vh-120px)] max-w-6xl mx-auto px-4 py-4 gap-4">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <h1 className="text-2xl font-bold">Quản lý dữ liệu</h1>
-          <p className="text-sm text-muted-foreground">
-            Quản lý nhật ký, nội dung và media (CRUD).
-          </p>
+      <div className="space-y-3 mb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Quản lý dữ liệu</h1>
+            <p className="text-sm text-muted-foreground">
+              Quản lý nhật ký, nội dung và media (CRUD). Tổng: {entries.length} entries
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              setIsLoading(true);
+              setError(null);
+              apiClient.listJournalEntries({ 
+                sort_by: sortBy,
+                sort_order: sortOrder,
+                date_from: dateFrom || undefined,
+                date_to: dateTo || undefined,
+              }).then(setEntries).catch((err) => {
+                const msg = err instanceof Error ? err.message : "Không thể tải danh sách nhật ký";
+                setError(msg);
+              }).finally(() => setIsLoading(false));
+            }} 
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="size-4 animate-spin mr-2" /> Đang tải...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="size-4 mr-2" /> Làm mới
+              </>
+            )}
+          </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={loadEntries} disabled={isLoading}>
-          {isLoading ? (
-            <>
-              <Loader2 className="size-4 animate-spin mr-2" /> Đang tải...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="size-4 mr-2" /> Làm mới
-            </>
-          )}
-        </Button>
+
+        {/* Search and Sort Controls */}
+        <div className="space-y-2">
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Tìm kiếm theo tên, thẻ, tâm trạng..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm rounded-md border border-input bg-background"
+          />
+
+          {/* Date Range and Sort Controls */}
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Date From */}
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Từ ngày:</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="px-2 py-1.5 text-sm rounded-md border border-input bg-background"
+              />
+            </div>
+
+            {/* Date To */}
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Đến ngày:</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="px-2 py-1.5 text-sm rounded-md border border-input bg-background"
+              />
+            </div>
+
+            {/* Clear Date Filter */}
+            {(dateFrom || dateTo) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+                className="text-xs"
+              >
+                Xóa lọc ngày
+              </Button>
+            )}
+
+            <div className="flex-1" />
+
+            {/* Sort By */}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "title" | "created_at")}
+              className="px-3 py-1.5 text-sm rounded-md border border-input bg-background"
+            >
+              <option value="created_at">Sắp xếp theo ngày</option>
+              <option value="title">Sắp xếp theo tên</option>
+            </select>
+
+            {/* Sort Order */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+              className="flex items-center gap-1"
+            >
+              {sortOrder === "asc" ? (
+                <>
+                  <ArrowUp className="size-4" /> Tăng dần
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="size-4" /> Giảm dần
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -120,12 +242,17 @@ export function DataManagerSection() {
       <div className="grid grid-cols-1 md:grid-cols-[2fr,3fr] gap-4 flex-1 min-h-0">
         {/* Left: list */}
         <div className="border border-border rounded-lg p-3 overflow-y-auto">
-          <h2 className="text-sm font-semibold mb-2">Danh sách nhật ký</h2>
+          <h2 className="text-sm font-semibold mb-2">
+            Danh sách nhật ký {searchQuery && `(${filteredEntries.length}/${entries.length})`}
+          </h2>
           {entries.length === 0 && !isLoading && (
             <p className="text-xs text-muted-foreground">Chưa có entry nào.</p>
           )}
+          {entries.length > 0 && filteredEntries.length === 0 && (
+            <p className="text-xs text-muted-foreground">Không tìm thấy entry nào phù hợp.</p>
+          )}
           <div className="space-y-2">
-            {entries.map((entry) => (
+            {filteredEntries.map((entry) => (
               <button
                 key={entry.entry_id}
                 onClick={() => void handleSelectEntry(entry.entry_id)}

@@ -12,6 +12,7 @@ from llama_index import (
     StorageContext,
     VectorStoreIndex,
 )
+from llama_index.callbacks import CallbackManager
 from llama_index.vector_stores import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
@@ -64,7 +65,11 @@ class GraphRAGService:
                     logger.info("Successfully initialized Gemini LLM with model: models/gemini-2.5-flash")
                     return gemini_llm
                 except Exception as exc:
-                    logger.error("Failed to initialize Gemini LLM: %s", exc, exc_info=True)
+                    error_str = str(exc).lower()
+                    if "suspended" in error_str or "permission denied" in error_str:
+                        logger.error("Gemini API key has been suspended. Please get a new API key from https://aistudio.google.com/apikey")
+                    else:
+                        logger.error("Failed to initialize Gemini LLM: %s", exc, exc_info=True)
                     return None
 
             elif provider == "ollama":
@@ -78,7 +83,7 @@ class GraphRAGService:
                         return None
 
                 ollama_base_url = str(cls._settings.ollama_base_url).rstrip("/")
-                model_to_use = ollama_model or "llama3:8b"
+                model_to_use = ollama_model or "llama3.1:8b"
 
                 try:
                     ollama_llm = Ollama(
@@ -90,7 +95,7 @@ class GraphRAGService:
                     return ollama_llm
                 except Exception as exc:
                     logger.error("Failed to initialize Ollama LLM: %s", exc, exc_info=True)
-                        return None
+                    return None
             
             else:
                 logger.warning("Unknown LLM provider: %s", provider)
@@ -108,6 +113,8 @@ class GraphRAGService:
         storage_context = None
         try:
             qdrant_client = QdrantClient(url=str(cls._settings.qdrant_url))
+            # Don't create collection here - let QdrantVectorStore create it automatically
+            # when first document is inserted with proper embedding dimensions
             vector_store = QdrantVectorStore(client=qdrant_client, collection_name="journal_entries")
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
             cls._qdrant_client = qdrant_client
@@ -150,29 +157,57 @@ class GraphRAGService:
                     embedding = None
                     logger.warning("No embedding model available, embeddings disabled: %s", emb_exc)
             
+            # Disable callback manager to avoid LLMPredictStartEvent validation errors
+            callback_manager = CallbackManager([])
+            
             if llm:
                 if embedding:
-                    service_context = ServiceContext.from_defaults(llm=llm, embed_model=embedding)
+                    service_context = ServiceContext.from_defaults(
+                        llm=llm, 
+                        embed_model=embedding,
+                        callback_manager=callback_manager
+                    )
                 else:
                     # Try without embeddings (may cause issues with VectorStoreIndex)
-                    service_context = ServiceContext.from_defaults(llm=llm, embed_model=None)
+                    service_context = ServiceContext.from_defaults(
+                        llm=llm, 
+                        embed_model=None,
+                        callback_manager=callback_manager
+                    )
                 logger.info("GraphRAGService configured with LLM: %s", cls._settings.llm_provider)
             else:
                 if embedding:
-                    service_context = ServiceContext.from_defaults(llm=None, embed_model=embedding)
+                    service_context = ServiceContext.from_defaults(
+                        llm=None, 
+                        embed_model=embedding,
+                        callback_manager=callback_manager
+                    )
                 else:
-                    service_context = ServiceContext.from_defaults(llm=None, embed_model=None)
+                    service_context = ServiceContext.from_defaults(
+                        llm=None, 
+                        embed_model=None,
+                        callback_manager=callback_manager
+                    )
                 logger.warning("GraphRAGService configured without LLM (provider: %s)", cls._settings.llm_provider)
         except Exception as exc:
             logger.warning("Could not create ServiceContext: %s", exc)
             # Fallback: try to create without embeddings
             try:
+                callback_manager = CallbackManager([])
                 if llm:
-                    service_context = ServiceContext.from_defaults(llm=llm, embed_model=None)
+                    service_context = ServiceContext.from_defaults(
+                        llm=llm, 
+                        embed_model=None,
+                        callback_manager=callback_manager
+                    )
                 else:
-                    service_context = ServiceContext.from_defaults(llm=None, embed_model=None)
+                    service_context = ServiceContext.from_defaults(
+                        llm=None, 
+                        embed_model=None,
+                        callback_manager=callback_manager
+                    )
             except Exception:
-            service_context = None
+                service_context = None
         
         # Create empty indices at startup
         try:
@@ -263,10 +298,24 @@ class GraphRAGService:
         if cls._index is None or cls._kg is None:
             logger.warning("GraphRAG indices not available, skipping indexing for entry %s", entry.id)
             return
+        
+        # Check if embeddings are available - if not, skip indexing to Qdrant
+        # (MockEmbedding will cause dimension errors)
+        if cls._index.service_context is None or cls._index.service_context.embed_model is None:
+            logger.info("Embeddings not available, skipping Qdrant indexing for entry %s (will use in-memory only)", entry.id)
+            # Still try to index to knowledge graph if possible
+            try:
+                document = Document(text=entry.content, metadata={"entry_id": entry.id, "tags": entry.tags})
+                cls._kg.insert(document)
+            except Exception as exc:
+                logger.warning("Failed to index entry %s in knowledge graph: %s", entry.id, exc)
+            return
+        
         document = Document(text=entry.content, metadata={"entry_id": entry.id, "tags": entry.tags})
         try:
             cls._index.insert(document)
             cls._kg.insert(document)
+            logger.info("Successfully indexed entry %s in GraphRAG", entry.id)
         except Exception as exc:
             logger.warning("Failed to index entry %s in GraphRAG: %s", entry.id, exc)
 
@@ -287,6 +336,17 @@ class GraphRAGService:
         if cls._index is None:
             return {"answer": "GraphRAG index not available. Please configure LLM API keys.", "references": []}
         
+        # Check if Qdrant collection exists, if not return helpful message
+        if cls._qdrant_client is not None:
+            try:
+                if not cls._qdrant_client.collection_exists("journal_entries"):
+                    return {
+                        "answer": "Chưa có dữ liệu trong hệ thống. Hãy tạo một số journal entries trước để tôi có thể tìm kiếm và trả lời câu hỏi của bạn.",
+                        "references": []
+                    }
+            except Exception as check_exc:
+                logger.warning("Failed to check Qdrant collection: %s", check_exc)
+        
         try:
             # Determine which model to use
             provider_to_use = model_override or cls._settings.llm_provider
@@ -294,7 +354,7 @@ class GraphRAGService:
             # Get LLM for the selected provider
             llm = cls._get_llm(provider_override=provider_to_use, ollama_model=ollama_model)
 
-                if llm is None:
+            if llm is None:
                 missing_key = "GEMINI_API_KEY" if provider_to_use == "gemini" else "OLLAMA_BASE_URL"
                 error_details: list[str] = []
                 if provider_to_use == "gemini":
@@ -303,10 +363,12 @@ class GraphRAGService:
                     elif cls._settings.gemini_api_key in ["your_gemini_key", "your-gemini-key", ""]:
                         error_details.append(f"{missing_key} appears to be a placeholder")
                     else:
-                        error_details.append("Failed to initialize Gemini LLM. Check backend logs for details.")
-                        error_details.append(
-                            "Make sure 'llama-index-llms-gemini' is installed: pip install llama-index-llms-gemini"
-                        )
+                        # Check if it's a suspended key issue
+                        error_details.append("Failed to initialize Gemini LLM.")
+                        error_details.append("⚠️ Your Gemini API key may have been suspended.")
+                        error_details.append("📝 Get a new API key from: https://aistudio.google.com/apikey")
+                        error_details.append("🔧 Then update GEMINI_API_KEY in .env and restart the API")
+                        error_details.append("📋 Check backend logs for more details")
                 elif provider_to_use == "ollama":
                     error_details.append("Failed to initialize Ollama LLM. Check backend logs for details.")
                     error_details.append(
@@ -316,7 +378,7 @@ class GraphRAGService:
                     if ollama_model:
                         error_details.append(f"Selected model: {ollama_model}")
                 else:
-                    error_details.append("Using default model: llama3:8b")
+                    error_details.append("Using default model: llama3.1:8b")
 
                 error_msg = (
                     f"LLM provider '{provider_to_use}' is not available.\n\n"
@@ -536,10 +598,10 @@ Agent: "Ok, task này đơn giản. Dùng pg_dump pipe qua mc (MinIO Client) là
                     # Try fallback: use query engine but catch the error
                     try:
                         logger.info("Retrying with default query engine...")
-                    query_engine = cls._index.as_query_engine(
-                        similarity_top_k=top_k,
-                        service_context=service_context
-                    )
+                        query_engine = cls._index.as_query_engine(
+                            similarity_top_k=top_k,
+                            service_context=service_context
+                        )
                         response = query_engine.query(query)
                         answer = str(response)
                         references = []

@@ -42,7 +42,7 @@ export interface JournalMediaInfo {
   type: string;
   url: string;
   storage_path: string;
-  details: any;
+  details: Record<string, unknown>;
 }
 
 export interface JournalEntryDetail {
@@ -151,10 +151,10 @@ class ApiClient {
         const error = await response.json();
         // Try to extract error message from various possible formats
         errorMessage = 
-          error.detail || 
-          error.message || 
-          error.error?.message || 
-          (Array.isArray(error.detail) ? error.detail.map((e: any) => e.msg || e.message).join(", ") : error.detail) ||
+          (error.detail as string) || 
+          (error.message as string) || 
+          ((error.error as { message?: string })?.message) || 
+          (Array.isArray(error.detail) ? error.detail.map((e: { msg?: string; message?: string }) => e.msg || e.message).join(", ") : (error.detail as string)) ||
           response.statusText;
       } catch {
         // If JSON parsing fails, use status text
@@ -199,12 +199,22 @@ class ApiClient {
 
   // Journal management (CRUD)
   async listJournalEntries(params?: {
-    limit?: number;
+    limit?: number | null;
     offset?: number;
+    sort_by?: "title" | "created_at";
+    sort_order?: "asc" | "desc";
+    date_from?: string; // YYYY-MM-DD
+    date_to?: string; // YYYY-MM-DD
   }): Promise<JournalEntrySummary[]> {
     const searchParams = new URLSearchParams();
-    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.limit !== undefined && params.limit !== null) {
+      searchParams.set("limit", String(params.limit));
+    }
     if (params?.offset) searchParams.set("offset", String(params.offset));
+    if (params?.sort_by) searchParams.set("sort_by", params.sort_by);
+    if (params?.sort_order) searchParams.set("sort_order", params.sort_order);
+    if (params?.date_from) searchParams.set("date_from", params.date_from);
+    if (params?.date_to) searchParams.set("date_to", params.date_to);
     const query = searchParams.toString();
     const path = query ? `/journal?${query}` : "/journal";
     return this.request(path);
@@ -231,7 +241,7 @@ class ApiClient {
   }
 
   async getAnalysisSummary(limit = 200): Promise<{
-    mood_trend: any[];
+    mood_trend: Array<{ date: string; mood: string; score: number | null }>;
     mood_frequency: Record<string, number>;
     top_topics: Array<{ topic: string; count: number }>;
     insights: Array<{ title: string; description: string }>;
@@ -307,7 +317,7 @@ class ApiClient {
         type: string;
         url: string;
         storage_path: string;
-        details: any;
+        details: Record<string, unknown>;
       }>;
     }>;
   }> {

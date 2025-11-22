@@ -87,17 +87,6 @@ export function RemindersSection() {
               placeholder="user@example.com"
             />
           </div>
-          Process SpawnProcess-1:
-
-Traceback (most recent call last):
-
-  File "/usr/local/lib/python3.11/multiprocessing/process.py", line 314, in _bootstrap
-
-    self.run()
-
-  File "/usr/local/lib/python3.11/multiprocessing/process.py", line 108, in run
-
-    self._target(*self._args, **self._kwargs)
 
           <div className="space-y-2">
             <label htmlFor="subject" className="text-sm font-medium">

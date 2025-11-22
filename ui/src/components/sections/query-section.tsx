@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { apiClient, type RetrievalRequest } from "@/lib/api";
 import { useState, useEffect, useRef } from "react";
-import { Send, Loader2, Sparkles, Settings2, X, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { Send, Loader2, Sparkles, Settings2, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -28,10 +28,10 @@ interface Message {
         type: string;
         url: string;
         storage_path: string;
-        details: any;
+        details: Record<string, unknown>;
       }>;
     }>;
-  };
+  } | null;
   timestamp: Date;
 }
 
@@ -144,7 +144,25 @@ export function QuerySection() {
       // Check for function calls in response
       const functionCallRegex = /\[FUNCTION_CALL:([^\]]+)\]([\s\S]*?)\[\/FUNCTION_CALL\]/g;
       let processedAnswer = response.answer;
-      let searchResults: any = null;
+      let searchResults: {
+        query: string;
+        count: number;
+        results: Array<{
+          entry_id: number;
+          title: string;
+          content: string;
+          mood?: string;
+          tags: string[];
+          created_at: string;
+          media: Array<{
+            id: number;
+            type: string;
+            url: string;
+            storage_path: string;
+            details: Record<string, unknown>;
+          }>;
+        }>;
+      } | null = null;
       
       const functionCalls = Array.from(response.answer.matchAll(functionCallRegex));
       if (functionCalls.length > 0) {
@@ -155,7 +173,7 @@ export function QuerySection() {
         
         if (functionName === "/search") {
           // Parse parameters
-          const params: any = { query: "" };
+          const params: { query: string; has_media?: boolean; media_type?: string } = { query: "" };
           const paramLines = functionParams.split("\n");
           for (const line of paramLines) {
             if (line.includes(":")) {
@@ -215,8 +233,8 @@ export function QuerySection() {
         errorMessage = err;
       } else if (err && typeof err === "object") {
         // Try to extract message from error object
-        const errObj = err as any;
-        errorMessage = errObj.message || errObj.detail || errObj.error?.message || JSON.stringify(err);
+        const errObj = err as Record<string, unknown>;
+        errorMessage = (errObj.message as string) || (errObj.detail as string) || ((errObj.error as { message?: string })?.message) || JSON.stringify(err);
       }
       
       setError(errorMessage);

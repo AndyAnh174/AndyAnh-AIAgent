@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -44,19 +44,63 @@ async def create_entry(
     summary="List journal entries",
 )
 async def list_entries(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int | None = Query(None, ge=1, description="Number of entries to return (None = no limit)"),
     offset: int = Query(0, ge=0),
+    sort_by: str = Query("created_at", description="Sort by: 'title' or 'created_at'"),
+    sort_order: str = Query("desc", description="Sort order: 'asc' or 'desc'"),
+    date_from: str | None = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Filter to date (YYYY-MM-DD)"),
     session: AsyncSession = Depends(get_session),
     session_id: str = Depends(get_or_create_session),
 ):
-    """Return a paginated list of journal entries with media counts."""
+    """Return a list of journal entries with media counts. Supports sorting and optional pagination."""
+    # Validate sort_by
+    if sort_by not in ["title", "created_at"]:
+        raise HTTPException(status_code=400, detail="sort_by must be 'title' or 'created_at'")
+    
+    # Validate sort_order
+    if sort_order not in ["asc", "desc"]:
+        raise HTTPException(status_code=400, detail="sort_order must be 'asc' or 'desc'")
+    
+    # Build order_by clause
+    if sort_by == "title":
+        order_column = JournalEntry.title
+    else:  # created_at
+        order_column = JournalEntry.created_at
+    
+    if sort_order == "desc":
+        order_clause = order_column.desc()
+    else:
+        order_clause = order_column.asc()
+    
     stmt = (
         select(JournalEntry)
-        .options(selectinload(JournalEntry.media_assets))
-        .order_by(JournalEntry.created_at.desc())
-        .offset(offset)
-        .limit(limit)
+        .options(
+            selectinload(JournalEntry.media_assets),
+            selectinload(JournalEntry.analysis_notes)
+        )
     )
+    
+    # Apply date filters
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+            stmt = stmt.where(JournalEntry.created_at >= datetime.combine(from_date, datetime.min.time()))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_from must be in YYYY-MM-DD format")
+    
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+            stmt = stmt.where(JournalEntry.created_at <= datetime.combine(to_date, datetime.max.time()))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_to must be in YYYY-MM-DD format")
+    
+    stmt = stmt.order_by(order_clause).offset(offset)
+    
+    # Only apply limit if specified
+    if limit is not None:
+        stmt = stmt.limit(limit)
     result = await session.execute(stmt)
     entries: list[JournalEntry] = result.scalars().all()
 
@@ -137,7 +181,10 @@ async def update_entry(
     stmt = (
         select(JournalEntry)
         .where(JournalEntry.id == entry_id)
-        .options(selectinload(JournalEntry.media_assets))
+        .options(
+            selectinload(JournalEntry.media_assets),
+            selectinload(JournalEntry.analysis_notes)
+        )
     )
     result = await session.execute(stmt)
     entry: JournalEntry | None = result.scalar_one_or_none()
@@ -199,7 +246,11 @@ async def delete_entry(
     stmt = (
         select(JournalEntry)
         .where(JournalEntry.id == entry_id)
-        .options(selectinload(JournalEntry.media_assets), selectinload(JournalEntry.reminders))
+        .options(
+            selectinload(JournalEntry.media_assets),
+            selectinload(JournalEntry.reminders),
+            selectinload(JournalEntry.analysis_notes)
+        )
     )
     result = await session.execute(stmt)
     entry: JournalEntry | None = result.scalar_one_or_none()

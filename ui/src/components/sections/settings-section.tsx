@@ -108,7 +108,7 @@ export function SettingsSection() {
 
       // Test connection
       await testConnection();
-    } catch (error) {
+    } catch {
       setStatus({
         type: "error",
         message: "Không thể lưu cấu hình",
